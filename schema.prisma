@@ -1,0 +1,552 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection string — used at runtime by serverless functions
+  directUrl = env("DIRECT_URL")   // direct (unpooled) connection string — used only for migrations
+}
+
+enum AssetType {
+  STOCK
+  ETF
+  FUND
+  BOND
+  GOLD
+  SILVER
+  CASH
+  COMMODITY
+  INDEX
+}
+
+enum Market {
+  US
+  BIST
+}
+
+enum DataStatus {
+  VALID
+  STALE
+  UNAVAILABLE
+  ERROR
+}
+
+enum Recommendation {
+  STRONG_BUY
+  BUY
+  HOLD
+  SELL
+  STRONG_SELL
+  INSUFFICIENT_DATA
+}
+
+enum TimeHorizon {
+  SHORT_TERM
+  MEDIUM_TERM
+  LONG_TERM
+}
+
+enum RiskProfile {
+  CONSERVATIVE
+  MODERATE
+  AGGRESSIVE
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  passwordHash String?
+  baseCurrency String        @default("USD")
+  riskProfile  RiskProfile   @default(MODERATE)
+  createdAt    DateTime      @default(now())
+  portfolios   Portfolio[]
+  watchlists   Watchlist[]
+  alerts       Alert[]
+  investorProfile    InvestorProfile?
+  capitalPools       CapitalPool[]
+  recommendationLogs RecommendationLog[]
+}
+
+model Sector {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  industries Industry[]
+  assets     Asset[]
+}
+
+model Industry {
+  id       String  @id @default(cuid())
+  name     String
+  sectorId String
+  sector   Sector  @relation(fields: [sectorId], references: [id])
+  assets   Asset[]
+
+  @@unique([name, sectorId])
+}
+
+model Asset {
+  id                String   @id @default(cuid())
+  symbol            String
+  name              String
+  isin              String?
+  assetType         AssetType
+  market            Market
+  country           String?
+  exchange          String?
+  tradingCurrency   String
+  referenceCurrency String   @default("USD")
+  dataSource        String
+  active            Boolean  @default(true)
+  isDemoSeed        Boolean  @default(false)
+  sectorId          String?
+  industryId        String?
+  sector            Sector?  @relation(fields: [sectorId], references: [id])
+  industry          Industry? @relation(fields: [industryId], references: [id])
+
+  prices              Price[]
+  financialStatements FinancialStatement[]
+  financialMetrics    FinancialMetric[]
+  news                News[]
+  technicalIndicators TechnicalIndicator[]
+  signals             Signal[]
+  aiAnalyses          AIAnalysis[]
+  positions           PortfolioPosition[]
+  watchlistItems      WatchlistItem[]
+  earningsEvents      EarningsEvent[]
+  marketEvents        MarketEvent[]
+  analystEstimates    AnalystEstimate[]
+  recommendationLogs  RecommendationLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([symbol, exchange])
+  @@index([market, assetType])
+}
+
+model Price {
+  id           String     @id @default(cuid())
+  assetId      String
+  asset        Asset      @relation(fields: [assetId], references: [id])
+  timestamp    DateTime
+  interval     String
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  volume       Float?
+  currency     String
+  source       String
+  retrievedAt  DateTime   @default(now())
+  dataStatus   DataStatus @default(VALID)
+
+  @@unique([assetId, timestamp, interval])
+  @@index([assetId, timestamp])
+}
+
+model FXRate {
+  id         String     @id @default(cuid())
+  baseCurrency String
+  quoteCurrency String
+  rate       Float
+  timestamp  DateTime
+  source     String
+  retrievedAt DateTime  @default(now())
+  dataStatus DataStatus @default(VALID)
+
+  @@unique([baseCurrency, quoteCurrency, timestamp])
+  @@index([baseCurrency, quoteCurrency])
+}
+
+model FinancialStatement {
+  id           String     @id @default(cuid())
+  assetId      String
+  asset        Asset      @relation(fields: [assetId], references: [id])
+  periodType   String
+  periodEnd    DateTime
+  filingType   String?
+  source       String
+  retrievedAt  DateTime   @default(now())
+  dataStatus   DataStatus @default(VALID)
+  raw          Json
+
+  @@unique([assetId, periodEnd, periodType])
+}
+
+model FinancialMetric {
+  id              String     @id @default(cuid())
+  assetId         String
+  asset           Asset      @relation(fields: [assetId], references: [id])
+  periodEnd       DateTime
+  periodType      String     @default("FY") // FY | Q1 | Q2 | Q3 | Q4 | TTM
+  fiscalYear      Int?
+  fiscalQuarter   Int?
+  metricName      String
+  value           Float?
+  currency        String?
+  source          String
+  sourceUrl       String?
+  cik             String?
+  accessionNumber String?
+  xbrlTag         String?
+  filingDate      DateTime?
+  retrievedAt     DateTime   @default(now())
+  dataStatus      DataStatus @default(VALID)
+  dataQuality     String?    // HIGH | MEDIUM | LOW | ESTIMATE
+  confidence      Int?
+
+  // Dedup key: the same filing (accession number) reporting the same tag
+  // for the same period must never create a second row — re-syncing is
+  // always an upsert against this key, never an insert.
+  @@unique([assetId, periodEnd, metricName, accessionNumber])
+}
+
+model News {
+  id          String   @id @default(cuid())
+  assetId     String?
+  asset       Asset?   @relation(fields: [assetId], references: [id])
+  headline    String
+  url         String
+  source      String
+  publishedAt DateTime
+  sentiment   String?
+  relevance   String?
+  retrievedAt DateTime @default(now())
+
+  @@unique([source, url, publishedAt])
+}
+
+model MacroData {
+  id          String     @id @default(cuid())
+  seriesId    String
+  seriesName  String
+  country     String
+  value       Float
+  date        DateTime
+  source      String
+  retrievedAt DateTime   @default(now())
+  dataStatus  DataStatus @default(VALID)
+
+  @@unique([seriesId, date])
+}
+
+model TechnicalIndicator {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  date        DateTime
+  indicator   String
+  value       Float
+  params      Json?
+
+  @@unique([assetId, date, indicator])
+}
+
+model Signal {
+  id             String          @id @default(cuid())
+  assetId        String
+  asset          Asset           @relation(fields: [assetId], references: [id])
+  timeHorizon    TimeHorizon
+  recommendation Recommendation
+  score          Float
+  confidence     String
+  keyReasons     Json
+  keyRisks       Json
+  generatedAt    DateTime        @default(now())
+
+  @@index([assetId, timeHorizon, generatedAt])
+}
+
+model AIAnalysis {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  inputHash   String
+  output      Json
+  model       String
+  generatedAt DateTime @default(now())
+
+  @@unique([assetId, inputHash])
+}
+
+model Portfolio {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  capitalPoolId String?
+  capitalPool   CapitalPool? @relation(fields: [capitalPoolId], references: [id])
+  name          String
+  baseCurrency  String
+  riskProfile   RiskProfile
+  timeHorizon   TimeHorizon
+  cashBalance   Float    @default(0)
+  createdAt     DateTime @default(now())
+
+  positions   PortfolioPosition[]
+  snapshots   PortfolioSnapshot[]
+  allocations Allocation[]
+}
+
+model PortfolioPosition {
+  id           String    @id @default(cuid())
+  portfolioId  String
+  portfolio    Portfolio @relation(fields: [portfolioId], references: [id])
+  assetId      String
+  asset        Asset     @relation(fields: [assetId], references: [id])
+  quantity     Float
+  averageCost  Float
+  costCurrency String
+  targetAllocationPct Float?
+  maxAllocationPct    Float?
+  openedAt     DateTime  @default(now())
+  thesis       InvestmentThesis?
+
+  @@unique([portfolioId, assetId])
+}
+
+model PortfolioSnapshot {
+  id              String   @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id])
+  date            DateTime
+  totalValue      Float
+  baseCurrency    String
+  dailyReturn     Float?
+  totalReturn     Float?
+  assetWeights    Json
+  currencyWeights Json
+  benchmarkReturn Float?
+
+  @@unique([portfolioId, date])
+}
+
+model Allocation {
+  id           String    @id @default(cuid())
+  portfolioId  String
+  portfolio    Portfolio @relation(fields: [portfolioId], references: [id])
+  assetClass   String
+  targetPct    Float
+  currentPct   Float?
+  generatedAt  DateTime  @default(now())
+}
+
+model InvestorProfile {
+  id                     String      @id @default(cuid())
+  userId                 String      @unique
+  user                   User        @relation(fields: [userId], references: [id])
+  ageRange               String?
+  experience             String?
+  riskTolerance          RiskProfile @default(MODERATE)
+  investmentHorizon      TimeHorizon @default(MEDIUM_TERM)
+  objective              String?
+  liquidityRequirement   String?
+  monthlyInvestment      Float?
+  emergencyCash          Float?
+  dividendPreference     Boolean     @default(false)
+  growthPreference       Boolean     @default(true)
+  valuePreference        Boolean     @default(false)
+  maxSinglePositionPct   Float       @default(20)
+  maxSectorPct           Float       @default(30)
+  maxCountryPct          Float       @default(70)
+  maxCurrencyPct         Float       @default(70)
+  maxAssetClassPct       Float       @default(60)
+  minCashPct             Float       @default(5)
+  maxIlliquidPct         Float       @default(20)
+  updatedAt              DateTime    @updatedAt
+}
+
+model CapitalPool {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  name           String
+  currency       String
+  capital        Float
+  market         Market
+  allowedMarkets Market[]
+  riskProfile    RiskProfile
+  timeHorizon    TimeHorizon
+  portfolios     Portfolio[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+enum ThesisStatus {
+  STRONG
+  INTACT
+  WEAKENING
+  AT_RISK
+  BROKEN
+}
+
+model InvestmentThesis {
+  id                     String   @id @default(cuid())
+  positionId             String   @unique
+  position               PortfolioPosition @relation(fields: [positionId], references: [id])
+  rationale              String
+  bullCase               String
+  baseCase               String
+  bearCase               String
+  expectedHorizon        TimeHorizon
+  keyCatalysts           Json
+  keyRisks               Json
+  financialAssumptions   Json     // e.g. { revenueGrowthPct: 24, fcfMarginPct: 12 } — the numbers the thesis depends on
+  valuationAssumptions   Json     // e.g. { targetPB: 1.2, targetEvEbitda: 6 }
+  invalidationConditions Json     // plain-language conditions stated at purchase time
+  status                 ThesisStatus @default(INTACT)
+  lastReviewedAt         DateTime @default(now())
+  createdAt              DateTime @default(now())
+
+  events  ThesisEvent[]
+  history ThesisHistoryEntry[]
+}
+
+model ThesisEvent {
+  id          String   @id @default(cuid())
+  thesisId    String
+  thesis      InvestmentThesis @relation(fields: [thesisId], references: [id])
+  category    String   // REVENUE | EARNINGS | MARGINS | FCF | DEBT | GUIDANCE | MANAGEMENT | KAP | SEC | NEWS | REGULATORY | CONTRACT | MNA | CAPITAL_INCREASE | BUYBACK | DIVIDEND | LEGAL | CUSTOMER_LOSS | INDUSTRY
+  detail      String
+  severity    String   // MINOR | MODERATE | SEVERE
+  source      String
+  detectedAt  DateTime @default(now())
+}
+
+model ThesisHistoryEntry {
+  id             String   @id @default(cuid())
+  thesisId       String
+  thesis         InvestmentThesis @relation(fields: [thesisId], references: [id])
+  date           DateTime @default(now())
+  recommendation String   // BUY | BUY_THE_DIP | HOLD | REDUCE | SELL | WATCH
+  status         ThesisStatus
+  reason         String
+}
+
+model RecommendationLog {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  assetId         String
+  asset           Asset    @relation(fields: [assetId], references: [id])
+  action          String   // BUY | HOLD | REDUCE | SELL | WATCH | WAIT
+  score           Float?
+  confidence      String?
+  reasons         Json
+  priceAtRec      Float?
+  generatedAt     DateTime @default(now())
+  outcome1d       Float?
+  outcome1w       Float?
+  outcome1m       Float?
+  outcome3m       Float?
+  outcome6m       Float?
+  outcome1y       Float?
+  userAction      String?  // ACCEPTED | REJECTED | IGNORED
+}
+
+
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model DataSource {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String
+  configured  Boolean  @default(false)
+  lastFetchAt DateTime?
+}
+
+model DataFetchLog {
+  id           String   @id @default(cuid())
+  provider     String
+  requestType  String
+  status       String
+  errorMessage String?
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+}
+
+model Watchlist {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  name   String
+  items  WatchlistItem[]
+}
+
+model WatchlistItem {
+  id          String    @id @default(cuid())
+  watchlistId String
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id])
+  assetId     String
+  asset       Asset     @relation(fields: [assetId], references: [id])
+
+  @@unique([watchlistId, assetId])
+}
+
+model Company {
+  id            String    @id @default(cuid())
+  ticker        String
+  exchange      String
+  country       String
+  currency      String
+  legalName     String
+  isin          String?
+  securityType  String    @default("STOCK")
+  sector        String?
+  industry      String?
+  active        Boolean   @default(true)
+  listingDate   DateTime?
+  delistingDate DateTime?
+  cik           String?
+  kapCode       String?
+  description   String?
+  lastUpdated   DateTime  @updatedAt
+
+  @@unique([ticker, exchange])
+}
+
+model EarningsEvent {
+  id       String   @id @default(cuid())
+  assetId  String
+  asset    Asset    @relation(fields: [assetId], references: [id])
+  date     DateTime
+  period   String
+  epsEst   Float?
+  epsActual Float?
+  source   String
+
+  @@unique([assetId, date, period])
+}
+
+model MarketEvent {
+  id          String   @id @default(cuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  eventType   String   // EARNINGS | DIVIDEND | BUYBACK | MNA | REGULATORY | KAP | SEC | CENTRAL_BANK | ECONOMIC | OTHER
+  title       String
+  date        DateTime
+  importance  String   // LOW | MEDIUM | HIGH
+  source      String
+  detectedAt  DateTime @default(now())
+}
+
+model AnalystEstimate {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id])
+  metric    String
+  period    String
+  estimate  Float
+  source    String
+  asOf      DateTime
+
+  @@unique([assetId, metric, period, source])
+}
