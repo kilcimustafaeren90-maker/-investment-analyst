@@ -4,8 +4,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled connection string — used at runtime by serverless functions
-  directUrl = env("DIRECT_URL")   // direct (unpooled) connection string — used only for migrations
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum AssetType {
@@ -180,7 +180,7 @@ model FinancialMetric {
   assetId         String
   asset           Asset      @relation(fields: [assetId], references: [id])
   periodEnd       DateTime
-  periodType      String     @default("FY") // FY | Q1 | Q2 | Q3 | Q4 | TTM
+  periodType      String     @default("FY")
   fiscalYear      Int?
   fiscalQuarter   Int?
   metricName      String
@@ -194,12 +194,9 @@ model FinancialMetric {
   filingDate      DateTime?
   retrievedAt     DateTime   @default(now())
   dataStatus      DataStatus @default(VALID)
-  dataQuality     String?    // HIGH | MEDIUM | LOW | ESTIMATE
+  dataQuality     String?
   confidence      Int?
 
-  // Dedup key: the same filing (accession number) reporting the same tag
-  // for the same period must never create a second row — re-syncing is
-  // always an upsert against this key, never an insert.
   @@unique([assetId, periodEnd, metricName, accessionNumber])
 }
 
@@ -392,9 +389,9 @@ model InvestmentThesis {
   expectedHorizon        TimeHorizon
   keyCatalysts           Json
   keyRisks               Json
-  financialAssumptions   Json     // e.g. { revenueGrowthPct: 24, fcfMarginPct: 12 } — the numbers the thesis depends on
-  valuationAssumptions   Json     // e.g. { targetPB: 1.2, targetEvEbitda: 6 }
-  invalidationConditions Json     // plain-language conditions stated at purchase time
+  financialAssumptions   Json
+  valuationAssumptions   Json
+  invalidationConditions Json
   status                 ThesisStatus @default(INTACT)
   lastReviewedAt         DateTime @default(now())
   createdAt              DateTime @default(now())
@@ -407,9 +404,9 @@ model ThesisEvent {
   id          String   @id @default(cuid())
   thesisId    String
   thesis      InvestmentThesis @relation(fields: [thesisId], references: [id])
-  category    String   // REVENUE | EARNINGS | MARGINS | FCF | DEBT | GUIDANCE | MANAGEMENT | KAP | SEC | NEWS | REGULATORY | CONTRACT | MNA | CAPITAL_INCREASE | BUYBACK | DIVIDEND | LEGAL | CUSTOMER_LOSS | INDUSTRY
+  category    String
   detail      String
-  severity    String   // MINOR | MODERATE | SEVERE
+  severity    String
   source      String
   detectedAt  DateTime @default(now())
 }
@@ -419,7 +416,7 @@ model ThesisHistoryEntry {
   thesisId       String
   thesis         InvestmentThesis @relation(fields: [thesisId], references: [id])
   date           DateTime @default(now())
-  recommendation String   // BUY | BUY_THE_DIP | HOLD | REDUCE | SELL | WATCH
+  recommendation String
   status         ThesisStatus
   reason         String
 }
@@ -430,7 +427,7 @@ model RecommendationLog {
   user            User     @relation(fields: [userId], references: [id])
   assetId         String
   asset           Asset    @relation(fields: [assetId], references: [id])
-  action          String   // BUY | HOLD | REDUCE | SELL | WATCH | WAIT
+  action          String
   score           Float?
   confidence      String?
   reasons         Json
@@ -442,10 +439,10 @@ model RecommendationLog {
   outcome3m       Float?
   outcome6m       Float?
   outcome1y       Float?
-  userAction      String?  // ACCEPTED | REJECTED | IGNORED
+  userAction      String?
 }
 
-
+model Notification {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
@@ -530,10 +527,10 @@ model MarketEvent {
   id          String   @id @default(cuid())
   assetId     String
   asset       Asset    @relation(fields: [assetId], references: [id])
-  eventType   String   // EARNINGS | DIVIDEND | BUYBACK | MNA | REGULATORY | KAP | SEC | CENTRAL_BANK | ECONOMIC | OTHER
+  eventType   String
   title       String
   date        DateTime
-  importance  String   // LOW | MEDIUM | HIGH
+  importance  String
   source      String
   detectedAt  DateTime @default(now())
 }
@@ -545,4 +542,22 @@ model AnalystEstimate {
   metric    String
   period    String
   estimate  Float?
+  source    String
+  asOf      DateTime
 
+  @@unique([assetId, metric, period, source])
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  assetId   String?
+  asset     Asset?   @relation(fields: [assetId], references: [id])
+  type      String
+  condition Json
+  active    Boolean  @default(true)
+  triggered Boolean  @default(false)
+  createdAt DateTime @default(now())
+  triggeredAt DateTime?
+}
