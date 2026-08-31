@@ -147,14 +147,14 @@ model Price {
 }
 
 model FXRate {
-  id         String     @id @default(cuid())
+  id           String     @id @default(cuid())
   baseCurrency String
   quoteCurrency String
-  rate       Float
-  timestamp  DateTime
-  source     String
-  retrievedAt DateTime  @default(now())
-  dataStatus DataStatus @default(VALID)
+  rate         Float
+  timestamp    DateTime
+  source       String
+  retrievedAt  DateTime   @default(now())
+  dataStatus   DataStatus @default(VALID)
 
   @@unique([baseCurrency, quoteCurrency, timestamp])
   @@index([baseCurrency, quoteCurrency])
@@ -511,14 +511,14 @@ model Company {
 }
 
 model EarningsEvent {
-  id       String   @id @default(cuid())
-  assetId  String
-  asset    Asset    @relation(fields: [assetId], references: [id])
-  date     DateTime
-  period   String
-  epsEst   Float?
-  epsActual Float?
-  source   String
+  id         String   @id @default(cuid())
+  assetId    String
+  asset      Asset    @relation(fields: [assetId], references: [id])
+  date       DateTime
+  period     String
+  epsEst     Float?
+  epsActual  Float?
+  source     String
 
   @@unique([assetId, date, period])
 }
@@ -549,15 +549,15 @@ model AnalystEstimate {
 }
 
 model Alert {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  assetId   String?
-  asset     Asset?   @relation(fields: [assetId], references: [id])
-  type      String
-  condition Json
-  active    Boolean  @default(true)
-  triggered Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  assetId     String?
+  asset       Asset?   @relation(fields: [assetId], references: [id])
+  type        String
+  condition   Json
+  active      Boolean  @default(true)
+  triggered   Boolean  @default(false)
+  createdAt   DateTime @default(now())
   triggeredAt DateTime?
 }
