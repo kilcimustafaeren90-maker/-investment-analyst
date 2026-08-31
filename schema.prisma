@@ -544,9 +544,5 @@ model AnalystEstimate {
   asset     Asset    @relation(fields: [assetId], references: [id])
   metric    String
   period    String
-  estimate  Float
-  source    String
-  asOf      DateTime
+  estimate 
 
-  @@unique([assetId, metric, period, source])
-}
