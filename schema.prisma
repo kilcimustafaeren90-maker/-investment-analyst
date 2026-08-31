@@ -544,5 +544,5 @@ model AnalystEstimate {
   asset     Asset    @relation(fields: [assetId], references: [id])
   metric    String
   period    String
-  estimate 
+  estimate  Float?
 
