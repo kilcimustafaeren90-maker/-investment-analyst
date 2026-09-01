@@ -1,4 +1,4 @@
- # AI Investment Analyst — V1
+# AI Investment Analyst — V1
 
 ## Setup
 ```
